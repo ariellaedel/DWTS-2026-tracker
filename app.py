@@ -2,14 +2,17 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+# Set up the Streamlit page layout and title
 st.set_page_config(page_title="DWTS Analytics Dashboard", layout="wide")
 st.title("💃 Dancing with the Stars Dashboard")
 
-# Load data using numpy_nullable backend
+# Load the CSV file using the numpy_nullable backend for robust data handling
 df = pd.read_csv("dwts_data.csv", dtype_backend="numpy_nullable")
+
+# Strip leading and trailing whitespaces from column headers
 df.columns = df.columns.str.strip()
 
-# Smart auto-fix for column name variations
+# Automatically map various possible CSV column names to standard app names
 column_mapping = {}
 for col in df.columns:
     col_lower = col.lower()
@@ -22,12 +25,13 @@ for col in df.columns:
     elif "season" in col_lower:
         column_mapping[col] = "Season"
 
+# Apply the mapping to rename columns
 df = df.rename(columns=column_mapping)
 
-# Remove any duplicate columns if multiple matched the same name
+# Remove any duplicate columns if multiple matches occurred
 df = df.loc[:, ~df.columns.duplicated()]
 
-# Ensure required columns exist
+# Verify that all mandatory columns exist in the dataset
 required_cols = ["Celebrity", "Week", "Score"]
 missing = [c for c in required_cols if c not in df.columns]
 
@@ -35,11 +39,11 @@ if missing:
     st.error(f"Missing required columns: {missing}. Found columns in your CSV: {list(df.columns)}")
     st.stop()
 
-# Safety check: if Celebrity is somehow still a table, grab the first column
+# Safety check: ensure 'Celebrity' is a single column series, not a dataframe
 if isinstance(df["Celebrity"], pd.DataFrame):
     df["Celebrity"] = df["Celebrity"].iloc[:, 0]
 
-# Robust score cleaning and max score detection (handles /40 for Week 4, /30, etc.)
+# Parse scores and fractions, and assign max possible scores (Weeks 4 and 6 are out of 40; others out of 30)
 earned_scores = []
 max_scores = []
 
@@ -50,6 +54,7 @@ for idx, row in df.iterrows():
     earned = None
     possible = None
     
+    # Check if the score entry contains a slash
     if "/" in val_str:
         parts = [p.strip() for p in val_str.split("/") if p.strip() != ""]
         if len(parts) >= 2:
@@ -60,10 +65,9 @@ for idx, row in df.iterrows():
     else:
         earned = pd.to_numeric(val_str, errors="coerce")
         
-    # Default max score logic if not explicitly in the fraction
+    # Default max score logic if not explicitly defined in a fraction
     if pd.isna(possible):
-        # If week is 4 (or user noted week 4 is out of 40), default to 40, otherwise 30
-        if str(week_val) == "4":
+        if str(week_val) in ["4", "6"]:
             possible = 40
         else:
             possible = 30
@@ -71,13 +75,15 @@ for idx, row in df.iterrows():
     earned_scores.append(earned)
     max_scores.append(possible)
 
+# Assign cleaned numeric values back to the DataFrame
 df["Score"] = pd.Series(earned_scores, dtype="float64")
 df["Max_Score"] = pd.Series(max_scores, dtype="float64")
 df["Percentage"] = (df["Score"] / df["Max_Score"]) * 100
 df["Week"] = pd.to_numeric(df["Week"], errors="coerce")
 
-# Sidebar Filters
+# Set up sidebar controls for filtering and display preferences
 st.sidebar.header("Filter Options")
+
 selected_celebrity = st.sidebar.multiselect(
     "Select Celebrity:",
     options=df["Celebrity"].unique(),
@@ -89,16 +95,19 @@ score_display_mode = st.sidebar.radio(
     ["Raw Points Earned", "Percentage (%)"]
 )
 
+# Filter the DataFrame based on user selections and sort by week order
 filtered_df = df[df["Celebrity"].isin(selected_celebrity)].sort_values(by="Week")
 
-# Choose metric column based on sidebar selection
+# Determine which column and label to use based on the sidebar toggle
 metric_col = "Score" if score_display_mode == "Raw Points Earned" else "Percentage"
 metric_label = "Average Score (Points)" if score_display_mode == "Raw Points Earned" else "Average Performance (%)"
 
-# Metrics with safe average calculation
+# Display summary metrics at the top of the dashboard
 col1, col2 = st.columns(2)
+
 with col1:
     st.metric("Total Performances Tracked", len(filtered_df))
+
 with col2:
     if not filtered_df.empty and filtered_df[metric_col].notna().any():
         avg_val = float(filtered_df[metric_col].mean())
@@ -107,8 +116,47 @@ with col2:
     else:
         st.metric(metric_label, "N/A")
 
-# Interactive Chart
+# Calculate overall rankings sorted by Total Points
+st.subheader("🏆 Leaderboard & Rankings (by Total Points)")
+
+if not filtered_df.empty:
+    # Group by Celebrity and compute total points, total dances, average performance, and average points
+    leaderboard = (
+        filtered_df.groupby("Celebrity")
+        .agg(
+            Total_Points=("Score", "sum"),
+            Dances_Count=("Week", "count"),
+            Avg_Percentage=("Percentage", "mean"),
+            Avg_Points=("Score", "mean"),
+        )
+        .reset_index()
+    )
+
+    # Sort by Total Points descending
+    leaderboard = leaderboard.sort_values(by="Total_Points", ascending=False)
+    
+    # Add Rank column (1, 2, 3...) based on total points accumulated
+    leaderboard.insert(0, "Rank", range(1, len(leaderboard) + 1))
+    
+    # Format numbers for cleaner presentation
+    leaderboard["Avg_Percentage"] = leaderboard["Avg_Percentage"].round(1).astype(str) + "%"
+    leaderboard["Avg_Points"] = leaderboard["Avg_Points"].round(1)
+
+    # Rename columns for table display
+    leaderboard = leaderboard.rename(columns={
+        "Total_Points": "Total Points Earned",
+        "Dances_Count": "Dances Tracked",
+        "Avg_Percentage": "Avg Performance (%)",
+        "Avg_Points": "Avg Score (pts)"
+    })
+
+    st.dataframe(leaderboard, use_container_width=True, hide_index=True)
+else:
+    st.write("No celebrity data to display for rankings.")
+
+# Render the interactive line chart visualization
 st.subheader(f"Score Progress Over Weeks ({score_display_mode})")
+
 if not filtered_df.empty:
     fig = px.line(
         filtered_df,
@@ -123,6 +171,6 @@ if not filtered_df.empty:
 else:
     st.write("Please select at least one celebrity from the sidebar.")
 
-# Raw Data Table
+# Display the underlying raw data table
 st.subheader("Raw Performance Data")
 st.dataframe(filtered_df[["Season", "Week", "Celebrity", "Score", "Max_Score", "Percentage"]])
