@@ -32,6 +32,10 @@ Season   Week   Celebrity        Partner             Dance      Score   Eliminat
 35       1      Conner Leavitt   Adele Zaikman       Salsa      12/30   Yes
 35       1      Connor Wood      Rylee Arnold        cha cha    16/30   No
 ```
+## Future Works & Coming Soon
+- **Predictive Elimination Modeling:** Integrating machine learning classifiers to forecast upcoming contestant eliminations based on historical score trends.
+- **Advanced Sentiment Analytics:** Analyzing weekly social media engagement metrics alongside judge scores to measure public popularity impact.
+
 ## How to Run
 This app is built using Python and Streamlit. Running `app.py` loads the data from `dwts_data.csv` and launches the interactive dashboard directly in a web browser.
 
