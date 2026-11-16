@@ -84,10 +84,12 @@ df["Week"] = pd.to_numeric(df["Week"], errors="coerce")
 # Set up sidebar controls for filtering and display preferences
 st.sidebar.header("Filter Options")
 
+celebrity_options = df["Celebrity"].dropna().astype(str).unique().tolist()
+
 selected_celebrity = st.sidebar.multiselect(
     "Select Celebrity:",
-    options=df["Celebrity"].unique(),
-    default=df["Celebrity"].unique(),
+    options=celebrity_options,
+    default=celebrity_options,
 )
 
 score_display_mode = st.sidebar.radio(
